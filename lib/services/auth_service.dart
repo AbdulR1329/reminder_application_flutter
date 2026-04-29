@@ -13,6 +13,11 @@ class AuthService {
     return await _auth.createUserWithEmailAndPassword(email: email, password: password);
   }
 
+  // Sign Out
+  Future<void> signOut() async {
+    await _auth.signOut();
+  }
+
   // Send Email Verification
   Future<void> sendEmailVerification() async {
     try {

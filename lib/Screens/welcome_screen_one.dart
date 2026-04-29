@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'welcome_screen_two.dart';
+import 'auth/login_screen.dart';
 
 class WelcomeScreenOne extends StatelessWidget {
   const WelcomeScreenOne({super.key});
@@ -31,7 +32,7 @@ class WelcomeScreenOne extends StatelessWidget {
                           borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -87,7 +88,7 @@ class WelcomeScreenOne extends StatelessWidget {
                   children: [
                     TextButton(
                       onPressed: () {
-                        // TODO: Navigator.pushReplacement to LoginScreen
+                         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
                       },
                       child: const Text("Skip", style: TextStyle(color: Color(0xFF7A869A))),
                     ),

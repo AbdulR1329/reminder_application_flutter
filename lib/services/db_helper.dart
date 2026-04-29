@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
- import 'package:reminder_application/Models/capsule_model.dart';
+import 'package:reminder_application/Models/capsule_model.dart';
 
 class DBHelper {
   static Database? _db;
@@ -17,19 +17,19 @@ class DBHelper {
   }
 
   void _onCreate(Database db, int version) async {
-    // Table for Capsules (Local Cache)
+
     await db.execute('''
       CREATE TABLE capsules(
         id TEXT PRIMARY KEY, 
         userId TEXT, 
         title TEXT, 
+        description TEXT, 
         openDate TEXT, 
         tag TEXT, 
         memoryCount INTEGER
       )
     ''');
 
-    // Table for Search History
     await db.execute('''
       CREATE TABLE search_history(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +39,18 @@ class DBHelper {
     ''');
   }
 
-  // --- Search History Logic ---
+  Future<List<CapsuleModel>> getUserCapsules(String userId) async {
+    final dbClient = await db;
+    final List<Map<String, dynamic>> maps = await dbClient.query(
+      'capsules',
+      where: 'userId = ?',
+      whereArgs: [userId],
+      orderBy: 'openDate ASC',
+    );
+
+    return List.generate(maps.length, (i) => CapsuleModel.fromMap(maps[i]));
+  }
+
 
   Future<void> saveSearchQuery(String query) async {
     final dbClient = await db;
@@ -48,18 +59,6 @@ class DBHelper {
         {'query': query},
         conflictAlgorithm: ConflictAlgorithm.replace
     );
-  }
-
-  Future<List<CapsuleModel>> getUserCapsules(String userId) async {
-    final dbClient = await db;
-    final List<Map<String, dynamic>> maps = await dbClient.query(
-      'capsules',
-      where: 'userId = ?',
-      whereArgs: [userId],
-      orderBy: 'openDate ASC', // Shows the ones opening soonest first!
-    );
-
-    return List.generate(maps.length, (i) => CapsuleModel.fromMap(maps[i]));
   }
 
   Future<List<String>> getRecentSearches() async {

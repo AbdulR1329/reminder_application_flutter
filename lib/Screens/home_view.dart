@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:reminder_application/Models/capsule_model.dart';
+import 'package:reminder_application/Screens/capsule_detail_screen.dart';
 import '../widgets/capsule_card.dart';
-import '../services/db_helper.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -12,100 +13,297 @@ class HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<HomeView> {
-  List<CapsuleModel> myCapsules = [];
-  bool _isLoading = true;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadRealCapsules();
-  }
-
-  // ASYNC: Try-Catch for Local Database Reads
-  Future<void> _loadRealCapsules() async {
-    final String? uid = FirebaseAuth.instance.currentUser?.uid;
-
-    if (uid == null) {
-      if (mounted) setState(() { _isLoading = false; _errorMessage = "User not logged in"; });
-      return;
-    }
-
-    try {
-      final capsules = await DBHelper().getUserCapsules(uid);
-      if (mounted) {
-        setState(() {
-          myCapsules = capsules;
-          _isLoading = false;
-          _errorMessage = null; // Clear any previous errors
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = "Failed to load local capsules. Please restart the app.";
-        });
-      }
-    }
-  }
+  String _selectedFilter = "All";
 
   @override
   Widget build(BuildContext context) {
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+
     return Container(
-      decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFEDF1FA), Color(0xFFFDE8D7)])),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFFEDF1FA),
+            Color(0xFFFDE8D7),
+          ],
+        ),
+      ),
       child: SafeArea(
-        child: _buildBody(),
+        child: uid == null
+            ? const Center(
+          child: Text("User not logged in"),
+        )
+            : _buildFirestoreBody(uid),
       ),
     );
   }
 
-  Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF9DA8C3)));
-    }
+  Widget _buildFirestoreBody(String uid) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('capsules')
+          .where('userId', isEqualTo: uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Center(
+            child: Text("Failed to load capsules."),
+          );
+        }
 
-    if (_errorMessage != null) {
-      return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent)),
-          )
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(24.0),
-      children: [
-        const Text('My Capsules', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w600, fontFamily: 'Serif', color: Color(0xFF2C3E50))),
-        const SizedBox(height: 4),
-        Text('${myCapsules.length} time capsules waiting to be opened', style: const TextStyle(fontSize: 14, color: Color(0xFF7A869A))),
-        const SizedBox(height: 24),
-
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {}, // Handled by BottomNav now
-                icon: const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 18),
-                label: const Text('Your Vault', style: TextStyle(color: Colors.white)),
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF9DA8C3), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
-              ),
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: Color(0xFF9DA8C3),
             ),
-          ],
+          );
+        }
+
+        final rawDocs = snapshot.data?.docs ?? [];
+
+        List<CapsuleModel> myCapsules = rawDocs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+
+          return CapsuleModel(
+            id: data['id'] ?? doc.id,
+            userId: data['userId'] ?? '',
+            title: data['title'] ?? 'Untitled',
+            description: data['description'] ?? '',
+            openDate: DateTime.parse(
+              data['openDate'] ??
+                  DateTime.now().toIso8601String(),
+            ),
+            tag: data['tag'] ?? 'Capsule',
+            memoryCount: data['memoryCount'] ?? 0,
+            mediaUrls:
+            List<String>.from(data['mediaUrls'] ?? []),
+          );
+        }).toList();
+
+        List<CapsuleModel> filteredList =
+        _getFilteredItems(myCapsules);
+
+        return RefreshIndicator(
+          onRefresh: () async {},
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 20,
+            ),
+            children: [
+              _buildAnimatedItem(
+                0,
+                const Column(
+                  crossAxisAlignment:
+                  CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'My Vault',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Serif',
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Your collection of locked memories and alerts',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF7A869A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
+              _buildAnimatedItem(
+                1,
+                _buildFilterBar(),
+              ),
+
+              const SizedBox(height: 28),
+
+              if (filteredList.isEmpty)
+                _buildAnimatedItem(
+                  2,
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 60),
+                      child: Text("No items found."),
+                    ),
+                  ),
+                )
+              else
+                ...List.generate(filteredList.length,
+                        (index) {
+                      final item = filteredList[index];
+
+                      return _buildAnimatedItem(
+                        index + 2,
+                        CapsuleCard(
+                          capsule: item,
+
+                          onRefresh: () {},
+
+                          onTap: () {
+                            final isCapsule = item.tag
+                                .trim()
+                                .toLowerCase() ==
+                                'capsule';
+
+                            if (isCapsule) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      CapsuleDetailScreen(
+                                        capsule: item,
+                                      ),
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context)
+                                  .hideCurrentSnackBar();
+
+                              ScaffoldMessenger.of(context)
+                                  .showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Reminder: ${item.title}",
+                                  ),
+                                  backgroundColor:
+                                  const Color(
+                                      0xFF2C3E50),
+                                  behavior:
+                                  SnackBarBehavior
+                                      .floating,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      );
+                    }),
+
+              const SizedBox(height: 40),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  List<CapsuleModel> _getFilteredItems(
+      List<CapsuleModel> items) {
+    if (_selectedFilter == "All") {
+      return items;
+    }
+
+    return items.where((item) {
+      final tag = item.tag.trim().toLowerCase();
+
+      if (_selectedFilter == "Capsules") {
+        return tag == "capsule";
+      }
+
+      if (_selectedFilter == "Reminders") {
+        return tag == "reminder";
+      }
+
+      return true;
+    }).toList();
+  }
+
+  Widget _buildFilterBar() {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white,
         ),
-        const SizedBox(height: 24),
+      ),
+      child: Row(
+        children: [
+          _buildFilterChip("All"),
+          _buildFilterChip("Capsules"),
+          _buildFilterChip("Reminders"),
+        ],
+      ),
+    );
+  }
 
-        if (myCapsules.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text("You haven't created any capsules yet!", style: TextStyle(color: Color(0xFF7A869A)))),
-          )
-        else
-          ...myCapsules.map((capsule) => CapsuleCard(capsule: capsule)).toList(),
+  Widget _buildFilterChip(String label) {
+    bool isSelected = _selectedFilter == label;
 
-        const SizedBox(height: 40),
-      ],
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _selectedFilter = label;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Colors.white
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected
+                  ? const Color(0xFF2C3E50)
+                  : const Color(0xFF7A869A),
+              fontWeight: isSelected
+                  ? FontWeight.bold
+                  : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedItem(
+      int index,
+      Widget child,
+      ) {
+    return TweenAnimationBuilder<double>(
+      duration: Duration(
+        milliseconds: 600 + (index * 80),
+      ),
+      tween: Tween(
+        begin: 0.0,
+        end: 1.0,
+      ),
+      curve: Curves.easeOutQuart,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(
+              0,
+              20 * (1 - value),
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: child,
     );
   }
 }

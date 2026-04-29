@@ -1,125 +1,255 @@
+import 'dart:ui'; // <--- REQUIRED FOR THE FROSTED GLASS BLUR
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:reminder_application/Models/capsule_model.dart';
 
-class CapsuleDetailScreen extends StatelessWidget {
+class CapsuleDetailScreen extends StatefulWidget {
   final CapsuleModel capsule;
 
   const CapsuleDetailScreen({super.key, required this.capsule});
 
   @override
-  Widget build(BuildContext context) {
-    // Check if the current date is past the unlock date
-    bool isUnlocked = DateTime.now().isAfter(capsule.openDate);
+  State<CapsuleDetailScreen> createState() => _CapsuleDetailScreenState();
+}
 
+class _CapsuleDetailScreenState extends State<CapsuleDetailScreen> with TickerProviderStateMixin {
+
+  bool get isUnlocked => DateTime.now().isAfter(widget.capsule.openDate);
+
+  late AnimationController _sheetController;
+  late Animation<Offset> _sheetSlide;
+  late Animation<double> _sheetFade;
+
+  late AnimationController _bgController;
+  late Animation<double> _bgScale;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Slower, more elegant slide up
+    _sheetController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+    _sheetSlide = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
+      CurvedAnimation(parent: _sheetController, curve: Curves.easeOutCubic),
+    );
+    _sheetFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _sheetController, curve: Curves.easeOut),
+    );
+
+    // Cinematic Background Zoom
+    _bgController = AnimationController(vsync: this, duration: const Duration(seconds: 20));
+    _bgScale = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _bgController, curve: Curves.easeInOutSine),
+    );
+
+    if (isUnlocked) {
+      _sheetController.forward();
+      _bgController.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _sheetController.dispose();
+    _bgController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFEDF1FA),
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.black, // Dark background makes the fade-ins look better
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF2C3E50)),
-          onPressed: () => Navigator.pop(context),
+        leading: Container(
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.3),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withOpacity(0.2)), // Aesthetic thin border
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+            onPressed: () => Navigator.pop(context),
+          ),
         ),
       ),
-      body: SafeArea(
+      body: isUnlocked ? _buildUnlockedView() : _buildLockedView(),
+    );
+  }
+
+  // --- UI FOR WHEN IT IS STILL LOCKED ---
+  Widget _buildLockedView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox(height: 40),
-
-            // THE RECEIVING HERO: The icon from the previous screen lands here!
-            Hero(
-              tag: 'capsule_icon_${capsule.id}',
-              child: Container(
-                width: 120, height: 120,
-                decoration: BoxDecoration(
-                  color: isUnlocked ? const Color(0xFFFFF3E0) : Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))],
-                ),
-                child: Icon(
-                  isUnlocked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
-                  size: 50,
-                  color: isUnlocked ? const Color(0xFFE65100) : const Color(0xFF9DA8C3),
-                ),
-              ),
-            ),
-
+            Icon(Icons.lock_outline, size: 80, color: Colors.white.withOpacity(0.5)),
             const SizedBox(height: 32),
-            Text(capsule.title, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, fontFamily: 'Serif', color: Color(0xFF2C3E50))),
-            const SizedBox(height: 8),
-
-            // Implicit Animation: Fades text based on lock status
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 600),
-              child: Text(
-                isUnlocked ? "The wait is over." : "Sealed until ${DateFormat('MMMM d, yyyy').format(capsule.openDate)}",
-                key: ValueKey(isUnlocked),
-                style: TextStyle(fontSize: 16, color: isUnlocked ? const Color(0xFFE65100) : const Color(0xFF7A869A)),
-              ),
+            const Text(
+              "Memory Locked",
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w300, color: Colors.white, letterSpacing: 2),
             ),
-
-            const SizedBox(height: 40),
-
-            // The Content Area
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(32),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(topLeft: Radius.circular(40), topRight: Radius.circular(40)),
-                ),
-                child: _buildContent(isUnlocked),
-              ),
-            )
+            const SizedBox(height: 16),
+            Text(
+              "Unsealing on\n${DateFormat('MMMM d, yyyy').format(widget.capsule.openDate)}",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: Colors.white.withOpacity(0.5), height: 1.5, letterSpacing: 1),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildContent(bool isUnlocked) {
-    if (!isUnlocked) {
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.hourglass_empty, size: 60, color: Color(0xFFE8EAF6)),
-          const SizedBox(height: 24),
-          const Text("Patience...", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF2C3E50))),
-          const SizedBox(height: 12),
-          const Text("This capsule's memories are still gestating. Come back when the time is right.", textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF7A869A))),
-        ],
-      );
-    }
+  // --- UI FOR WHEN IT IS UNLOCKED (Frosted Glass Aesthetics) ---
+  Widget _buildUnlockedView() {
+    if (widget.capsule.mediaUrls.isEmpty) return _buildTextOnlyView();
 
-    // If Unlocked, show the gallery! (We will just show placeholders for now if you didn't upload photos)
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Stack(
       children: [
-        const Text("Memories Unlocked", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2C3E50))),
-        const SizedBox(height: 24),
-        Expanded(
-          child: capsule.mediaUrls.isEmpty
-              ? const Center(child: Text("No photos were saved in this capsule.", style: TextStyle(color: Color(0xFF7A869A))))
-              : GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16),
-            itemCount: capsule.mediaUrls.length,
-            itemBuilder: (context, index) {
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.network(capsule.mediaUrls[index], fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Container(color: const Color(0xFFF5F7FA), child: const Center(child: CircularProgressIndicator(color: Color(0xFF9DA8C3))));
-                  },
-                ),
-              );
-            },
+        // 1. FRONT IMAGE (Animated Cinematic Zoom)
+        Positioned.fill(
+          child: ScaleTransition(
+            scale: _bgScale,
+            child: PageView.builder(
+                itemCount: widget.capsule.mediaUrls.length,
+                itemBuilder: (context, index) {
+                  return Image.network(
+                    widget.capsule.mediaUrls[index],
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return const Center(child: CircularProgressIndicator(color: Colors.white24));
+                    },
+                  );
+                }
+            ),
           ),
-        )
+        ),
+
+        // 2. MOODY VIGNETTE (Darkens the edges slightly to draw eyes to the center)
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.center,
+                radius: 1.2,
+                colors: [Colors.transparent, Colors.black.withOpacity(0.6)],
+              ),
+            ),
+          ),
+        ),
+
+        // 3. AESTHETIC FROSTED GLASS BOTTOM SHEET
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: SlideTransition(
+            position: _sheetSlide,
+            child: FadeTransition(
+              opacity: _sheetFade,
+              child: ClipRRect( // Clips the blur so it doesn't bleed everywhere
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // THE MAGIC BLUR
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(32, 40, 32, 48),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4), // Dark translucent tint
+                      border: Border(
+                        top: BorderSide(color: Colors.white.withOpacity(0.2), width: 1), // Shine effect on top edge
+                      ),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.capsule.title.toUpperCase(), // Uppercase for editorial look
+                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1.5),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            DateFormat('MMMM d, yyyy • h:mm a').format(widget.capsule.openDate),
+                            style: TextStyle(color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w400, fontSize: 14, letterSpacing: 0.5),
+                          ),
+
+                          if (widget.capsule.description.isNotEmpty) ...[
+                            const SizedBox(height: 24),
+                            Text(
+                              widget.capsule.description,
+                              style: TextStyle(fontSize: 16, height: 1.7, color: Colors.white.withOpacity(0.9)),
+                            ),
+                          ],
+
+                          if (widget.capsule.mediaUrls.length > 1) ...[
+                            const SizedBox(height: 32),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.arrow_back_ios, size: 12, color: Colors.white.withOpacity(0.5)),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "SWIPE TO BROWSE",
+                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(Icons.arrow_forward_ios, size: 12, color: Colors.white.withOpacity(0.5)),
+                              ],
+                            )
+                          ]
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
+    );
+  }
+
+  // Backup view for text-only reminders
+  Widget _buildTextOnlyView() {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 60),
+            Text(
+                widget.capsule.title.toUpperCase(),
+                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1.5)
+            ),
+            const SizedBox(height: 8),
+            Text(
+                "UNLOCKED ON ${DateFormat('MMM d, yyyy').format(widget.capsule.openDate)}",
+                style: TextStyle(color: Colors.white.withOpacity(0.5), fontWeight: FontWeight.w600, letterSpacing: 1)
+            ),
+            const SizedBox(height: 40),
+            if (widget.capsule.description.isNotEmpty) ...[
+              Container(
+                height: 2, width: 40, color: Colors.white.withOpacity(0.3),
+                margin: const EdgeInsets.only(bottom: 24),
+              ),
+              Text(
+                  widget.capsule.description,
+                  style: TextStyle(fontSize: 18, height: 1.8, color: Colors.white.withOpacity(0.9))
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

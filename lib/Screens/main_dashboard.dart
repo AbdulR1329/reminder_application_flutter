@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'home_view.dart';
 import 'search_view.dart';
-import 'notifications_view.dart';
-import 'create_capsule_screen.dart';
-import 'profile_view.dart';
+import 'notifications_view.dart'; // Updated import
+import 'settings_screen.dart';
+import 'create_selection_screen.dart';
 
 class MainDashboard extends StatefulWidget {
   const MainDashboard({super.key});
@@ -19,9 +19,11 @@ class _MainDashboardState extends State<MainDashboard> {
   final List<Widget> _screens = [
     const HomeView(),
     const SearchView(),
-    const CreateCapsuleScreen(),
-    const NotificationsView(),
-    const ProfileView(),
+    const CreateSelectionScreen(),
+    const NotificationsScreen(),
+    const SettingsScreen(),
+    // const ProfileView(),
+
   ];
 
   @override

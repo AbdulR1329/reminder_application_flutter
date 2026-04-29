@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import '../services/capsule_service.dart';
 import 'main_dashboard.dart';
 
@@ -12,32 +13,45 @@ class CreateCapsuleScreen extends StatefulWidget {
 }
 
 class _CreateCapsuleScreenState extends State<CreateCapsuleScreen> {
-  final PageController _pageController = PageController();
-  int _currentStep = 0;
-
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
-  String _capsuleType = 'Personal';
+  DateTime? _selectedDate;
   final List<File> _selectedMedia = [];
   bool _isUploading = false;
 
   final ImagePicker _picker = ImagePicker();
   final CapsuleService _capsuleService = CapsuleService();
 
-  void _nextStep() {
-    if (_titleController.text.trim().isEmpty && _currentStep == 0) {
-      _showError('Please enter a title');
-      return;
-    }
+  Future<void> _pickDateTime() async {
+    DateTime? date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(primary: Color(0xFF9DA8C3)),
+          ),
+          child: child!,
+        );
+      },
+    );
 
-    if (_currentStep < 2) {
-      _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-    } else {
-      _finishAndUpload();
+    if (date != null) {
+      TimeOfDay? time = await showTimePicker(
+        context: context,
+        initialTime: const TimeOfDay(hour: 12, minute: 0),
+      );
+
+      if (time != null) {
+        setState(() {
+          _selectedDate = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+        });
+      }
     }
   }
 
-  // ASYNC: Try-Catch for File System Permissions
   Future<void> _pickMedia(bool isVideo) async {
     try {
       final XFile? file = isVideo
@@ -48,14 +62,17 @@ class _CreateCapsuleScreenState extends State<CreateCapsuleScreen> {
         setState(() => _selectedMedia.add(File(file.path)));
       }
     } catch (e) {
-      _showError('Failed to pick media. Check gallery permissions.');
+      _showError('Failed to pick media.');
     }
   }
 
-  // ASYNC: Try-Catch for Network/Firebase Uploads
   Future<void> _finishAndUpload() async {
-    if (_selectedMedia.isEmpty) {
-      _showError('Please add at least one photo or video');
+    if (_titleController.text.trim().isEmpty) {
+      _showError('Please enter a title');
+      return;
+    }
+    if (_selectedDate == null) {
+      _showError('Please select a release date');
       return;
     }
 
@@ -65,12 +82,12 @@ class _CreateCapsuleScreenState extends State<CreateCapsuleScreen> {
       await _capsuleService.createFullCapsule(
           title: _titleController.text.trim(),
           description: _descController.text.trim(),
-          type: _capsuleType,
+          type: 'Capsule',
+          openDate: _selectedDate!,
           mediaFiles: _selectedMedia
       );
 
       if (mounted) {
-        // Success! Reload the dashboard to show the new capsule
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const MainDashboard()),
@@ -78,8 +95,7 @@ class _CreateCapsuleScreenState extends State<CreateCapsuleScreen> {
       }
     } catch (e) {
       if (mounted) {
-
-        _showError('Upload failed: Ensure you have an active internet connection.');
+        _showError('Upload failed. Please check your connection.');
         setState(() => _isUploading = false);
       }
     }
@@ -87,27 +103,188 @@ class _CreateCapsuleScreenState extends State<CreateCapsuleScreen> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message, style: const TextStyle(color: Colors.white)), backgroundColor: Colors.redAccent)
+        SnackBar(content: Text(message, style: const TextStyle(color: Colors.white)), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating)
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF2C3E50), size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text("New Capsule", style: TextStyle(color: Color(0xFF2C3E50), fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Serif')),
+        centerTitle: true,
+      ),
       body: Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFFEDF1FA), Color(0xFFFDE8D7)])),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFEDF1FA), Color(0xFFFDE8D7)],
+          ),
+        ),
         child: SafeArea(
-          child: Column(
-            children: [
-              _buildProgressIndicator(),
-              Expanded(
-                child: PageView(
-                  controller: _pageController,
-                  physics: const NeverScrollableScrollPhysics(), // Force using the Next button
-                  onPageChanged: (i) => setState(() => _currentStep = i),
-                  children: [_buildStep1(), _buildStep2(), _buildStep3()],
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildAnimatedItem(0, const Text("Preserve a Moment", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF2C3E50), fontFamily: 'Serif'))),
+                const SizedBox(height: 8),
+                _buildAnimatedItem(1, const Text("Fill in the details and add your precious memories.", style: TextStyle(color: Color(0xFF7A869A)))),
+                const SizedBox(height: 32),
+
+                // SECTION 1: DETAILS
+                _buildAnimatedItem(2, _buildInputField("Capsule Title", _titleController, "e.g., Summer Trip 2024", Icons.title_rounded)),
+                const SizedBox(height: 24),
+                _buildAnimatedItem(3, _buildInputField("A Note to the Future", _descController, "Write a heartfelt message...", Icons.edit_note_rounded, maxLines: 4)),
+                const SizedBox(height: 24),
+
+                // SECTION 2: DATE
+                _buildAnimatedItem(4, _buildSectionLabel("When to Reveal?")),
+                const SizedBox(height: 8),
+                _buildAnimatedItem(4, GestureDetector(
+                  onTap: _pickDateTime,
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4))],
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today_rounded, color: Color(0xFF9DA8C3), size: 22),
+                        const SizedBox(width: 16),
+                        Text(
+                          _selectedDate == null ? "Select Date & Time" : DateFormat('MMMM d, yyyy • h:mm a').format(_selectedDate!),
+                          style: TextStyle(
+                            color: _selectedDate == null ? const Color(0xFFB0B7C3) : const Color(0xFF2C3E50),
+                            fontSize: 16,
+                            fontWeight: _selectedDate == null ? FontWeight.normal : FontWeight.bold
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )),
+                const SizedBox(height: 32),
+
+                // SECTION 3: MEDIA
+                _buildAnimatedItem(5, _buildSectionLabel("Add Memories")),
+                const SizedBox(height: 12),
+                _buildAnimatedItem(5, Row(
+                  children: [
+                    Expanded(child: _buildMediaPickerButton(Icons.image_rounded, "Photos", () => _pickMedia(false))),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildMediaPickerButton(Icons.videocam_rounded, "Videos", () => _pickMedia(true))),
+                  ],
+                )),
+                const SizedBox(height: 16),
+                _buildAnimatedItem(6, _buildMediaPreviewGrid()),
+                const SizedBox(height: 48),
+
+                // ACTION BUTTON
+                _buildAnimatedItem(7, _buildActionButton(_isUploading ? "Sealing Capsule..." : "Seal & Lock", _finishAndUpload)),
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMediaPreviewGrid() {
+    if (_selectedMedia.isEmpty) return const SizedBox.shrink();
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _selectedMedia.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10),
+      itemBuilder: (context, index) {
+        return Stack(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                image: DecorationImage(image: FileImage(_selectedMedia[index]), fit: BoxFit.cover),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 5)],
+              ),
+            ),
+            Positioned(
+              top: 4, right: 4,
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedMedia.removeAt(index)),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                  child: const Icon(Icons.close, size: 14, color: Colors.redAccent),
                 ),
               ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildInputField(String label, TextEditingController controller, String hint, IconData icon, {int maxLines = 1}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionLabel(label),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: TextField(
+            controller: controller,
+            maxLines: maxLines,
+            style: const TextStyle(color: Color(0xFF2C3E50), fontWeight: FontWeight.w500),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(color: Color(0xFFB0B7C3), fontSize: 14),
+              prefixIcon: Icon(icon, color: const Color(0xFF9DA8C3), size: 22),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.all(20),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionLabel(String label) => Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2C3E50), fontSize: 14, letterSpacing: 0.5));
+
+  Widget _buildMediaPickerButton(IconData icon, String label, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 28, color: const Color(0xFF9DA8C3)),
+              const SizedBox(height: 8),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2C3E50), fontSize: 14)),
             ],
           ),
         ),
@@ -115,89 +292,33 @@ class _CreateCapsuleScreenState extends State<CreateCapsuleScreen> {
     );
   }
 
-  Widget _buildStep1() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        children: [
-          const Text("Create Time Capsule", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          _buildCardField("Capsule Title", _titleController, "My Special Moments"),
-          _buildCardField("Description", _descController, "Tell us about this capsule...", maxLines: 3),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              _typeButton("Personal", Icons.lock_outline),
-              const SizedBox(width: 12),
-              _typeButton("Group", Icons.people_outline),
-            ],
-          ),
-          const Spacer(),
-          _actionButton("Next →", _nextStep),
-        ],
+  Widget _buildActionButton(String label, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF9DA8C3),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          padding: const EdgeInsets.all(20),
+          elevation: 8,
+          shadowColor: const Color(0xFF9DA8C3).withValues(alpha: 0.4),
+        ),
+        onPressed: _isUploading ? null : onTap,
+        child: _isUploading
+            ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+            : Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, letterSpacing: 1)),
       ),
     );
   }
 
-  Widget _buildStep2() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        children: [
-          const Text("Add Content", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 24),
-          GridView.count(
-            shrinkWrap: true,
-            crossAxisCount: 2,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            children: [
-              _mediaOption(Icons.image_outlined, "Add Photos", () => _pickMedia(false)),
-              _mediaOption(Icons.videocam_outlined, "Add Videos", () => _pickMedia(true)),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text("${_selectedMedia.length} files selected", style: const TextStyle(color: Color(0xFF7A869A), fontWeight: FontWeight.bold)),
-          const Spacer(),
-          _actionButton("Next →", _nextStep),
-        ],
-      ),
+  Widget _buildAnimatedItem(int index, Widget child) {
+    return TweenAnimationBuilder<double>(
+      duration: Duration(milliseconds: 500 + (index * 80)),
+      tween: Tween(begin: 0.0, end: 1.0),
+      curve: Curves.easeOutQuart,
+      builder: (context, value, child) => Opacity(opacity: value, child: Transform.translate(offset: Offset(0, 20 * (1 - value)), child: child)),
+      child: child,
     );
-  }
-
-  Widget _buildStep3() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.lock_clock, size: 80, color: Color(0xFF9DA8C3)),
-          const SizedBox(height: 24),
-          const Text("Ready to Lock?", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          const Text("This capsule will be sealed securely in the cloud and synced to your devices.", textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF7A869A))),
-          const Spacer(),
-          _actionButton(_isUploading ? "Sealing Capsule..." : "Lock & Save", _finishAndUpload),
-        ],
-      ),
-    );
-  }
-
-  // --- UI Helpers (Same as before) ---
-  Widget _buildProgressIndicator() {
-    return Padding(padding: const EdgeInsets.all(20.0), child: Row(children: List.generate(3, (index) => Expanded(child: Container(height: 4, margin: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: index <= _currentStep ? const Color(0xFF9DA8C3) : Colors.white, borderRadius: BorderRadius.circular(2)))))));
-  }
-  Widget _mediaOption(IconData icon, String label, VoidCallback onTap) {
-    return GestureDetector(onTap: onTap, child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 32, color: const Color(0xFF9DA8C3)), const SizedBox(height: 8), Text(label)])));
-  }
-  Widget _actionButton(String label, VoidCallback onTap) {
-    return SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF9DA8C3), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.all(16)), onPressed: _isUploading ? null : onTap, child: _isUploading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Text(label, style: const TextStyle(color: Colors.white, fontSize: 16))));
-  }
-  Widget _typeButton(String type, IconData icon) {
-    bool selected = _capsuleType == type;
-    return Expanded(child: GestureDetector(onTap: () => setState(() => _capsuleType = type), child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: selected ? Colors.white : Colors.white.withOpacity(0.5), borderRadius: BorderRadius.circular(16), border: selected ? Border.all(color: const Color(0xFF9DA8C3)) : null), child: Column(children: [Icon(icon, color: selected ? const Color(0xFF9DA8C3) : Colors.grey), const SizedBox(height: 4), Text(type, style: TextStyle(color: selected ? const Color(0xFF9DA8C3) : Colors.grey))]))));
-  }
-  Widget _buildCardField(String label, TextEditingController controller, String hint, {int maxLines = 1}) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2C3E50))), const SizedBox(height: 8), TextField(controller: controller, maxLines: maxLines, decoration: InputDecoration(hintText: hint, hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))), const SizedBox(height: 16)]);
   }
 }

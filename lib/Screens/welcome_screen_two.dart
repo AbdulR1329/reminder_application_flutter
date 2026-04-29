@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'welcome_screen_three.dart';
+import 'auth/login_screen.dart';
 
 class WelcomeScreenTwo extends StatelessWidget {
   const WelcomeScreenTwo({super.key});
@@ -30,7 +31,7 @@ class WelcomeScreenTwo extends StatelessWidget {
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(24),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10)),
+                            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10)),
                           ],
                         ),
                         child: Column(
@@ -78,13 +79,11 @@ class WelcomeScreenTwo extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    InkWell(
-                      onTap: () => Navigator.pop(context), // Goes back to Screen 1
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                        child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF7A869A)),
-                      ),
+                    TextButton(
+                      onPressed: () {
+                         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+                      },
+                      child: const Text("Skip", style: TextStyle(color: Color(0xFF7A869A))),
                     ),
                     ElevatedButton(
                       onPressed: () {
